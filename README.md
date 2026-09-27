@@ -33,6 +33,17 @@ Convert Kiwix's official Chinese Wikipedia ZIM (Traditional Chinese) to **Simpli
 - 转换只针对**文本节点**（`>文字<`），自动跳过 `<script>/<style>/<pre>/<code>/<textarea>/<title>` 等，不破坏脚本和样式。
 - 内置 LRU 缓存（80 条），同一页面短时间重复访问不重复转换。
 
+### 为什么不在打包阶段直接生成简体 ZIM？
+
+一个自然的问题是：为什么不把离线包重新打包成简体版，一劳永逸？两个原因：
+
+1. **官方 ZIM 是滚动更新**。维基百科离线包每月发布新版本，每重打包一次都要重新转换全部词条、重建索引，维护成本高、很快过期。
+2. **实时转换成本足够低**。OpenCC 是原生 C++ 绑定，单个页面转换只要几十毫秒；配合 LRU 缓存，家庭场景完全无感。
+
+另外：Nginx/Caddy 反向代理只解决"转发"，简繁转换仍要自己写；本代理 186 行把"转发 + 转换 + 缓存 + 日志"一体做完，部署更简单。
+
+> **安全提示**：本项目仅供**家庭局域网**使用（电脑和手机连同一 Wi-Fi）。请勿把 8080 端口直接暴露到公网，也不要转发到不受信任的网络。
+
 ### 环境要求
 
 | 组件 | 说明 |
@@ -132,6 +143,17 @@ Browser ──> this proxy (8080) ──> Kiwix serve (8090) ──> ZIM offline
 ```
 
 Text nodes (`>text<`) are converted while `<script>/<style>/<pre>/<code>/<textarea>/<title>` blocks are skipped. A small LRU cache (80 entries) avoids repeated conversion.
+
+### Why not convert at packaging time?
+
+A natural question: why not re-package the ZIM into Simplified Chinese once and for all?
+
+1. **Official ZIMs are rolling releases.** Wikipedia offline packs ship monthly; re-packaging means re-converting every article and rebuilding the index each time — high maintenance, quickly stale.
+2. **Runtime conversion is cheap enough.** OpenCC is a native C++ binding; converting a single page takes tens of milliseconds. With the LRU cache it is imperceptible at home scale.
+
+Also: Nginx/Caddy reverse proxies only solve forwarding — you still have to write the conversion yourself. This proxy (186 lines) bundles forward + convert + cache + logging in one file, simpler to deploy.
+
+> **Security**: for **home LAN use only** (PC & phone on the same Wi-Fi). Do not expose port 8080 to the public internet.
 
 ### Requirements
 
