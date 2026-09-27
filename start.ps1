@@ -4,13 +4,14 @@
 # 2) 确保简体代理在 8080
 # 3) 打开浏览器
 
-# ==================== 按你的环境修改 ====================
-$KIWIX_DIR = "C:\Users\cong\Kiwix"          # Kiwix 安装目录（含 kiwix-serve.exe / python / zim）
-$ZIM_FILE  = "$KIWIX_DIR\zim\wikipedia_zh_all_maxi_2026-08.zim"
-$PYTHON_EXE = "$KIWIX_DIR\python\python.exe" # 你的 python3 路径；也可直接用 "python"
-$PROXY_PY  = Join-Path $PSScriptRoot "kiwix_zhs_proxy.py"  # 代理脚本在本项目目录
-$SERVE_EXE = "$KIWIX_DIR\kiwix-serve\kiwix-serve.exe"
-# ========================================================
+# ==================== 按你的环境修改（或设环境变量覆盖，AI/脚本更友好） ====================
+# 优先级：环境变量 KIWIX_DIR / ZIM_FILE / KIWIX_PYTHON > 下方默认值
+$KIWIX_DIR   = if ($env:KIWIX_DIR)  { $env:KIWIX_DIR }  else { "C:\Users\cong\Kiwix" }
+$ZIM_FILE    = if ($env:ZIM_FILE)   { $env:ZIM_FILE }   else { "$KIWIX_DIR\zim\wikipedia_zh_all_maxi_2026-08.zim" }
+$PYTHON_EXE  = if ($env:KIWIX_PYTHON) { $env:KIWIX_PYTHON } else { "$KIWIX_DIR\python\python.exe" }
+$PROXY_PY    = Join-Path $PSScriptRoot "kiwix_zhs_proxy.py"  # 代理脚本在本项目目录
+$SERVE_EXE   = "$KIWIX_DIR\kiwix-serve\kiwix-serve.exe"
+# ====================================================================================
 
 function Test-Port([int]$port) {
     return [bool](Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
