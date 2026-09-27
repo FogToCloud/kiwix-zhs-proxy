@@ -2,7 +2,11 @@
 
 **Kiwix 离线维基百科的简体中文代理** · *Server-side Traditional→Simplified Chinese proxy for offline Kiwix Wikipedia*
 
+> **家庭局域网里的离线简体维基百科**：把整个维基百科存在一台常年开机的设备里（电脑 / NAS / 树莓派都行），手机、电脑、平板连上同一个 WiFi，浏览器打开就能看——断网也能查，还是简体中文。
+
 把 Kiwix 官方中文维基 ZIM 离线包（繁体）在**服务端**实时转成简体，浏览器零脚本、零注入，电脑和手机直接浏览器访问。离线、免费、不登录、不依赖任何在线服务。
+
+> **Offline Simplified-Chinese Wikipedia on your home LAN**: host the whole Wikipedia on one always-on device (PC / NAS / Raspberry Pi) — phone, laptop and tablet just open the browser on the same Wi-Fi. Works offline, in Simplified Chinese.
 
 Convert Kiwix's official Chinese Wikipedia ZIM (Traditional Chinese) to **Simplified Chinese on the server side** — zero JS injection in the browser. Works fully offline: PC & phone just open a browser. No login, no online dependency.
 
