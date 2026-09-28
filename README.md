@@ -146,6 +146,8 @@ http://192.168.1.11:8080
 
 **看到和电脑一样的简体维基 = 成功。** 手机、电脑、平板，全家设备都能看，无外部网络也能查。
 
+> 手机端正常入口：打开 `http://<电脑IP>:8080` 后会先看到库列表（1 book(s)），点"维基百科"卡片即进入首页；想直达某词条，可用 `http://<电脑IP>:8080/viewer#wikipedia_zh_all_maxi_2026-08/<词条>`。缺库名的旧链接（`/content/<词条>`）代理会自动补全库名，不再 404。
+
 ### 代码长这样（无脑粘贴）
 
 `start.ps1`（一键启动，完整版在仓库根目录）：
@@ -163,7 +165,7 @@ Start-Sleep 3
 Start-Process "http://127.0.0.1:8080"
 ```
 
-`kiwix_zhs_proxy.py`（核心转换逻辑，182 行，完整版在仓库根目录）：
+`kiwix_zhs_proxy.py`（核心转换逻辑，单文件，完整版在仓库根目录）：
 
 ```python
 import opencc
@@ -197,18 +199,20 @@ class Proxy(SimpleHTTPRequestHandler):
 HTTPServer(('0.0.0.0', 8080), Proxy).serve_forever()
 ```
 
-（上面是精简示意，完整 182 行含繁简转换的占位保护逻辑，直接去仓库复制 `kiwix_zhs_proxy.py`。）
+（上面是精简示意，完整逻辑含繁简转换的占位保护、缺库名自动补全、302 重定向原样转发等，直接去仓库复制 `kiwix_zhs_proxy.py`。）
 
-### 我踩过的两个坑（卡了我一晚上）
+### 我踩过的三个坑（卡了我一晚上）
 
 1. **CSP 安全头不能丢。** Kiwix 返回的页面自带内容安全策略（`Content-Security-Policy`），代理必须原样转发。一开始把它丢了，结果地址栏在变、正文死活不显示——其实是浏览器安全机制把页面拦了。这个坑光看报错根本看不出来。
 2. **大页面传一半就断。** HTTP 长连接传大页面会传一半断开、浏览器还在傻等，一直转圈。强制响应结束立即断开连接（`Connection: close`）问题解决，1.3MB 的大词条秒开。
+3. **手机点词条/点卡片 404、页面加载异常。** 根因是代理用 urllib 自动"吞掉"了 Kiwix 的 302 重定向（Kiwix 对"只有库名"的路径会 302 到首页 `User:The other Kiwix guy/Landing`），直接把内容塞回给浏览器，但手机地址栏 URL 还是短路径，页面内相对链接解析错位 → 渲染出 404。修复：代理**不跟随重定向，把 302 原样转发给浏览器**，由浏览器自己跳转到完整路径（`/content/<库名>/<词条>`），URL 与内容一致；同时 `/content/<词条>` 缺库名自动补全、`/content/<库名>/` 尾斜杠归一化。手机实测全流程正常。
 
-### 避坑清单（3 条）
+### 避坑清单（4 条）
 
 1. **仅限家庭局域网**：代理绑定 `0.0.0.0` 是为了让手机能访问，**不要把 8080 端口映射到公网**，家里自己用就好。
 2. **ZIM 包从官方源下载**：不要贪快从不明网站下，官方镜像站最稳。
 3. **第一次加载稍慢**：手机第一次打开大词条要等几秒，之后有缓存就快了。
+4. **手机打不开词条？** 先确认走的是 `http://<电脑IP>:8080`（不要带旧书签里的缺库名短链），必要时手机浏览器开无痕模式再试——旧的 404 页面可能被浏览器缓存。
 
 ### 工作原理
 
@@ -222,6 +226,7 @@ HTTPServer(('0.0.0.0', 8080), Proxy).serve_forever()
 
 - 转换只针对**文本节点**（`>文字<`），自动跳过 `<script>/<style>/<pre>/<code>/<textarea>/<title>` 等，不破坏脚本和样式。
 - 内置 LRU 缓存（80 条），同一页面短时间重复访问不重复转换。
+- Kiwix 对"只有库名"路径返回 302 → 代理原样转发给浏览器，浏览器自动跳到首页完整路径，手机上点击卡片/词条全程正常。
 
 ### 为什么不在打包阶段直接生成简体 ZIM？
 
@@ -230,7 +235,7 @@ HTTPServer(('0.0.0.0', 8080), Proxy).serve_forever()
 1. **官方 ZIM 是滚动更新**。维基百科离线包每月发布新版本，每重打包一次都要重新转换全部词条、重建索引，维护成本高、很快过期。
 2. **实时转换成本足够低**。OpenCC 是原生 C++ 绑定，单个页面转换只要几十毫秒；配合 LRU 缓存，家庭场景完全无感。
 
-另外：Nginx/Caddy 反向代理只解决"转发"，简繁转换仍要自己写；本代理 186 行把"转发 + 转换 + 缓存 + 日志"一体做完，部署更简单。
+另外：Nginx/Caddy 反向代理只解决"转发"，简繁转换仍要自己写；本代理单文件把"转发 + 转换 + 缓存 + 日志"一体做完，部署更简单。
 
 ### 配置（环境变量）
 
@@ -240,6 +245,7 @@ HTTPServer(('0.0.0.0', 8080), Proxy).serve_forever()
 | `KIWIX_PORT` | `8080` | 本代理监听端口 |
 | `KIWIX_HOST` | `127.0.0.1` | 监听地址；**手机要访问时设为 `0.0.0.0`**（启动会提示仅限内网） |
 | `KIWIX_DEBUG=1` | 关 | 开启访问日志（写在脚本同目录 `proxy_access.log`） |
+| `KIWIX_ZIM_ID` | `wikipedia_zh_all_maxi_2026-08` | 缺库名自动补全时使用的库名（换 ZIM 包时改这里） |
 | `KIWIX_DIR` / `ZIM_FILE` | （start.ps1 内定义） | 一键启动时指定 Kiwix 目录与 ZIM 文件 |
 
 ### 目录结构
@@ -298,6 +304,8 @@ Article body — "People's Republic of China" — fully Simplified Chinese:
 4. Desktop: open `http://127.0.0.1:8080`.
 5. Phone on the same Wi-Fi: open `http://<your-PC-IP>:8080` (find the IP with `ipconfig`). No app needed.
 
+Phone entry: open `http://<PC-IP>:8080` → you'll see the library list (1 book(s)) → tap the "维基百科" card to enter the home page. Direct link to an article: `http://<PC-IP>:8080/viewer#wikipedia_zh_all_maxi_2026-08/<article>`. Legacy links missing the ZIM name (`/content/<article>`) are auto-completed by the proxy, so no more 404.
+
 ### How it works
 
 ```
@@ -310,17 +318,20 @@ Browser ──> this proxy (8080) ──> Kiwix serve (8090) ──> ZIM offline
 
 Text nodes (`>text<`) are converted while `<script>/<style>/<pre>/<code>/<textarea>/<title>` blocks are skipped. A small LRU cache (80 entries) avoids repeated conversion.
 
+Kiwix answers a bare "library-name-only" path (`/content/<zim>`) with a **302 redirect** to the home page (`User:The other Kiwix guy/Landing`). The proxy passes that 302 through to the browser verbatim (instead of following it internally), so the browser lands on the full path — URL and content stay in sync, and tapping cards/articles on a phone works reliably.
+
 ### Why not convert at packaging time?
 
 1. **Official ZIMs are rolling releases.** Wikipedia offline packs ship monthly; re-packaging means re-converting every article and rebuilding the index each time — high maintenance, quickly stale.
 2. **Runtime conversion is cheap enough.** OpenCC is a native C++ binding; converting a single page takes tens of milliseconds. With the LRU cache it is imperceptible at home scale.
 
-Also: Nginx/Caddy reverse proxies only solve forwarding — you still have to write the conversion yourself. This proxy (186 lines) bundles forward + convert + cache + logging in one file, simpler to deploy.
+Also: Nginx/Caddy reverse proxies only solve forwarding — you still have to write the conversion yourself. This proxy (single file) bundles forward + convert + cache + logging in one file, simpler to deploy.
 
-### Gotchas (two critical fixes)
+### Gotchas (three critical fixes)
 
 1. **Forward the CSP header verbatim.** Kiwix content pages carry `Content-Security-Policy: ... sandbox allow-scripts allow-same-origin ...`, the basis of the iframe sandbox. Dropping it breaks iframe scripts → content loads but never renders (URL hash changes, page stays frozen).
 2. **Force `Connection: close`.** With HTTP/1.1 keep-alive, large responses (e.g. the 1.3 MB article) may be truncated; the browser then waits forever per Content-Length → infinite spinner. Close the connection per response.
+3. **404 / broken page on phone when tapping an article or the library card.** The old proxy followed Kiwix's 302 internally, so the browser URL stayed a short path while content was the home page → relative links mis-resolved → 404 rendering. Fixed by passing the 302 through to the browser (URL and content stay consistent), auto-completing the ZIM name on `/content/<article>`, and normalizing the trailing slash on `/content/<zim>/`.
 
 ### Security
 
@@ -339,6 +350,7 @@ For **home LAN use only** (PC & phone on the same Wi-Fi). Do not expose port 808
 | `KIWIX_UPSTREAM` | `http://127.0.0.1:8090` | Upstream Kiwix address |
 | `KIWIX_PORT` | `8080` | Proxy listen port |
 | `KIWIX_DEBUG=1` | off | Write access log (`proxy_access.log`) |
+| `KIWIX_ZIM_ID` | `wikipedia_zh_all_maxi_2026-08` | ZIM name used when auto-completing missing library name |
 | `KIWIX_DIR` / `ZIM_FILE` | (in start.ps1) | One-click start paths |
 
 ### License
