@@ -1,0 +1,31 @@
+# 一键全家桶：kiwix-serve + 简体代理（+ 可选 Caddy 反代/认证）
+#
+# 用法（在仓库根目录）：
+#   1. 把 ZIM 文件放进 ./zim/ 目录（如 wikipedia_zh_all_maxi_2026-08.zim）
+#   2. docker compose up -d
+#   3. 浏览器打开 http://<本机IP>:8080/viewer
+#
+# 说明：
+#   - kiwix-serve 官方镜像的镜像名/tag 以 kiwix.org 发布为准；
+#     若 ghcr.io 上的镜像不可用，去掉 kiwix 服务、proxy 的 KIWIX_UPSTREAM
+#     指到宿主机上已运行的 Kiwix（http://host.docker.internal:8090）即可。
+#   - 生产建议在 proxy 前挂 Caddy 做访问认证（见 SECURITY.md）。
+services:
+  kiwix:
+    image: ghcr.io/kiwix/kiwix-serve:latest
+    command: ["/zim/wikipedia_zh_all_maxi_2026-08.zim"]
+    volumes:
+      - ./zim:/zim
+    ports:
+      - "8090:8090"
+
+  proxy:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      KIWIX_UPSTREAM: "http://kiwix:8090"
+      KIWIX_HOST: "0.0.0.0"
+      KIWIX_PORT: "8080"
+    depends_on:
+      - kiwix
