@@ -12,6 +12,22 @@ Kiwix 官方中文维基 ZIM 离线包是**繁体**，本项目在**服务端**�
 
 ---
 
+## 最快捷方式：把这段话发给你的 AI 助手（复制即用）
+
+本项目的作者就是这么装的——**全程托管给 AI，没有手写一行代码、没有手动敲一条命令**。你也可以：
+
+> 我要把中文维基百科离线装进家里，全程由你（AI 助手）帮我自动完成，我不懂代码：
+> 1. 帮我找到 Kiwix 官方 Windows 版下载地址，和官方中文维基离线包 `wikipedia_zh_all_maxi`（约 47GB，文件名为 `wikipedia_zh_all_maxi_*.zim`）的下载地址，告诉我怎么下载。
+> 2. 下载完成后，从 GitHub 仓库 `FogToCloud/kiwix-zhs-proxy` 获取 `kiwix_zhs_proxy.py` 和 `start.ps1`，放进 Kiwix 目录，并自动把脚本里的路径改成我机器上的实际路径。
+> 3. 帮我启动 Kiwix 服务和简体转换代理，然后打开浏览器验证能看到简体维基首页。
+> 4. 告诉我手机怎么连家里 WiFi 访问（不用装任何 App），以及以后每次怎么一键启动。
+>
+> 要求：全程不要我懂代码，每一步都告诉我你做了什么、结果是什么，有问题就自己查资料解决。
+
+复制上面这段给你的 AI 助手（豆包、ChatGPT、Claude 等都行），它会像帮我一样帮你装好。装完后手动方式见下文，原理见"工作原理"。
+
+**AI 时代装软件，就该这样**：不用啃文档、不用懂代码——把需求讲清楚，AI 自己调研、下载、配置、启动、修 bug，你只负责确认关键决策。想看这次部署的全过程实录（怎么调研选型、踩了哪三个坑、AI 怎么自己修好）→ [docs/ai-assisted-deployment.md](docs/ai-assisted-deployment.md)
+
 ## 先看效果（真实运行截图，全程离线）
 
 电脑浏览器打开的简体维基首页：
@@ -207,6 +223,8 @@ kiwix-zhs-proxy/
 ├── kiwix_zhs_proxy.py   # 代理主脚本（单文件，仅依赖 opencc）
 ├── start.ps1            # 一键启动（kiwix-serve + 代理 + 打开浏览器）
 ├── stop.ps1             # 停止
+├── docs/
+│   └── ai-assisted-deployment.md  # AI 托管部署实录（选型/踩坑/修复全过程）
 ├── LICENSE              # MIT
 └── README.md
 ```
