@@ -2,7 +2,7 @@
 
 **Kiwix 离线维基百科的简体中文代理** · *Server-side Traditional→Simplified Chinese proxy for offline Kiwix Wikipedia*
 
-> **把整个维基百科搬进家里**：一台常年开机的设备（闲置电脑 / NAS / 树莓派）存下全部中文维基，手机、电脑、平板连同一个 WiFi，浏览器打开就能看——**断网照查，还自动转简体**。
+> **把整个维基百科搬进家里**：一台常年开机的设备（常开电脑 / NAS / 树莓派）存下全部中文维基，手机、电脑、平板连同一个 WiFi，浏览器打开就能看——**不依赖外部网络照查，还自动转简体**。
 
 Kiwix 官方中文维基 ZIM 离线包是**繁体**，本项目在**服务端**实时转成简体：浏览器零脚本、零注入、零卡顿。离线、免费、不登录、不依赖任何在线服务。
 
@@ -17,7 +17,7 @@ Kiwix 官方中文维基 ZIM 离线包是**繁体**，本项目在**服务端**�
 本项目的作者就是这么装的——**全程托管给 AI，没有手写一行代码、没有手动敲一条命令**。你也可以：
 
 > 我要把中文维基百科离线装进家里，全程由你（AI 助手）帮我自动完成，我不懂代码：
-> 1. 帮我找到 Kiwix 官方 Windows 版下载地址，和官方中文维基离线包 `wikipedia_zh_all_maxi`（约 47GB，文件名为 `wikipedia_zh_all_maxi_*.zim`）的下载地址，告诉我怎么下载。
+> 1. 帮我找到 Kiwix 官方 Windows 版下载地址，和官方中文维基离线包 `wikipedia_zh_all_maxi`（约 25GB，实测 24.77GB，文件名为 `wikipedia_zh_all_maxi_*.zim`）的下载地址，告诉我怎么下载。
 > 2. 下载完成后，从 GitHub 仓库 `FogToCloud/kiwix-zhs-proxy` 获取 `kiwix_zhs_proxy.py` 和 `start.ps1`，放进 Kiwix 目录，并自动把脚本里的路径改成我机器上的实际路径。
 > 3. 帮我启动 Kiwix 服务和简体转换代理，然后打开浏览器验证能看到简体维基首页。
 > 4. 告诉我手机怎么连家里 WiFi 访问（不用装任何 App），以及以后每次怎么一键启动。
@@ -25,6 +25,8 @@ Kiwix 官方中文维基 ZIM 离线包是**繁体**，本项目在**服务端**�
 > 要求：全程不要我懂代码，每一步都告诉我你做了什么、结果是什么，有问题就自己查资料解决。
 
 复制上面这段给你的 AI 助手（豆包、ChatGPT、Claude 等都行），它会像帮我一样帮你装好。装完后手动方式见下文，原理见"工作原理"。
+
+> **小提示**：如果手机连不上，多半是代理只绑了 `127.0.0.1`——让 AI 把启动参数里的 `KIWIX_HOST` 改成 `0.0.0.0` 再重启即可（仓库代理默认绑 `127.0.0.1`，详见下文"配置"表）。
 
 **AI 时代装软件，就该这样**：不用啃文档、不用懂代码——把需求讲清楚，AI 自己调研、下载、配置、启动、修 bug，你只负责确认关键决策。想看这次部署的全过程实录（怎么调研选型、踩了哪三个坑、AI 怎么自己修好）→ [docs/ai-assisted-deployment.md](docs/ai-assisted-deployment.md)
 
@@ -38,7 +40,7 @@ Kiwix 官方中文维基 ZIM 离线包是**繁体**，本项目在**服务端**�
 
 ![词条正文简体](https://aka.doubaocdn.com/s/u4BtZzSASL)
 
-整个中文维基（约 154 万条词条）就在这台电脑里，手机连 WiFi 就能看，断网也能查。
+整个中文维基（约 154 万条词条）就在这台电脑里，手机连 WiFi 就能看，无外部网络也能查。
 
 ---
 
@@ -56,12 +58,12 @@ Kiwix 官方中文维基 ZIM 离线包是**繁体**，本项目在**服务端**�
 
 ### 上手：大学老师式步骤（照做就行）
 
-**一台常年开机的设备就行**：闲置电脑、NAS、树莓派都行。不需要懂代码，不需要会 Linux，全程鼠标操作。
+**一台常年开机的设备就行**：常开电脑、NAS、树莓派都行。不需要懂代码，不需要会 Linux，全程鼠标操作。
 
 需要下载三样东西：
 
 - **Kiwix Windows 版**：官方离线阅读器，负责读 ZIM 包。去 `kiwix.org` 官网下载 Windows 版。
-- **中文 ZIM 包**：整个中文维基百科的离线数据（约 47GB）。从 Kiwix 官方 ZIM 镜像站下载，文件名类似 `wikipedia_zh_all_maxi_2026-08.zim`。
+- **中文 ZIM 包**：整个中文维基百科的离线数据（约 25GB，实测 24.77GB）。从 Kiwix 官方 ZIM 镜像站下载，文件名类似 `wikipedia_zh_all_maxi_2026-08.zim`。
 - **本代理程序**：这个仓库，把繁体转简体。
 
 > 说明：官方中文 ZIM 包内容是繁体，代理程序在服务端实时转简体，浏览器拿到的就是干净的简体页面。为什么不直接找简体包？因为官方就没有简体 ZIM，只有繁体——这是 OpenZIM 项目的公开事实。
@@ -119,7 +121,7 @@ http://你的电脑IP:8080
 http://192.168.1.11:8080
 ```
 
-**看到和电脑一样的简体维基 = 成功。** 手机、电脑、平板，全家设备都能看，断网也能查。
+**看到和电脑一样的简体维基 = 成功。** 手机、电脑、平板，全家设备都能看，无外部网络也能查。
 
 ### 代码长这样（无脑粘贴）
 
@@ -260,7 +262,7 @@ Article body — "People's Republic of China" — fully Simplified Chinese:
 
 ### Step-by-step (no coding required)
 
-1. Download **Kiwix Windows tools** and the **Chinese ZIM** (`wikipedia_zh_all_maxi_2026-08.zim`, ~47 GB) from kiwix.org. Download this repo's `kiwix_zhs_proxy.py` and `start.ps1`.
+1. Download **Kiwix Windows tools** and the **Chinese ZIM** (`wikipedia_zh_all_maxi_2026-08.zim`, ~25 GB, measured 24.77 GB) from kiwix.org. Download this repo's `kiwix_zhs_proxy.py` and `start.ps1`.
 2. Put them in one folder:
    ```
    C:\Kiwix\
@@ -307,7 +309,7 @@ For **home LAN use only** (PC & phone on the same Wi-Fi). Do not expose port 808
 |---|---|
 | Python 3 | `pip install opencc-python-reimplemented` |
 | Kiwix tools | `kiwix-serve.exe` (download from kiwix.org) |
-| ZIM file | `wikipedia_zh_all_maxi_2026-08.zim` (~47 GB) |
+| ZIM file | `wikipedia_zh_all_maxi_2026-08.zim` (~25 GB, measured 24.77 GB) |
 
 | Var | Default | Purpose |
 |---|---|---|
