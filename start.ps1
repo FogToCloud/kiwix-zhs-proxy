@@ -11,6 +11,9 @@ $ZIM_FILE    = if ($env:ZIM_FILE)   { $env:ZIM_FILE }   else { "$KIWIX_DIR\zim\w
 $PYTHON_EXE  = if ($env:KIWIX_PYTHON) { $env:KIWIX_PYTHON } else { "$KIWIX_DIR\python\python.exe" }
 $PROXY_PY    = Join-Path $PSScriptRoot "kiwix_zhs_proxy.py"  # 代理脚本在本项目目录
 $SERVE_EXE   = "$KIWIX_DIR\kiwix-serve\kiwix-serve.exe"
+# 监听地址：默认 0.0.0.0 让手机能访问（代理启动时会提示"仅限内网"）；
+# 只想本机访问就设 $env:KIWIX_HOST = "127.0.0.1"
+$HOST_BIND   = if ($env:KIWIX_HOST) { $env:KIWIX_HOST } else { "0.0.0.0" }
 # ====================================================================================
 
 function Test-Port([int]$port) {
@@ -37,6 +40,7 @@ if (Test-Port 8080) {
 } else {
     Write-Host "[2/3] starting simplified proxy on 8080 ..." -ForegroundColor Cyan
     if (-not (Test-Path $PYTHON_EXE)) { Write-Host "ERROR: python not found at $PYTHON_EXE" -ForegroundColor Red; exit 1 }
+    $env:KIWIX_HOST = $HOST_BIND
     Start-Process -FilePath $PYTHON_EXE -ArgumentList "`"$PROXY_PY`"" -WindowStyle Minimized
     $tries2 = 0
     while (-not (Test-Port 8080) -and $tries2 -lt 15) { Start-Sleep -Seconds 2; $tries2++ }
