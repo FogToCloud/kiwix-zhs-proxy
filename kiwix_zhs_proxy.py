@@ -11,12 +11,14 @@ Kiwix 官方中文维基 ZIM 包是繁体，本代理在【服务端】把内容
     python kiwix_zhs_proxy.py
 电脑浏览器访问：  http://127.0.0.1:8080/viewer#wikipedia_zh_all_maxi_2026-08/User%3AThe_other_Kiwix_guy/Landing
 手机浏览器访问：  http://<电脑局域网IP>:8080/viewer#...(同上路径)
+访问入口页：      http://<电脑IP>:8080/lan   （自动列出本机所有可用地址 + 二维码，手机扫码即开）
 
 环境变量（可选）：
     KIWIX_UPSTREAM  上游 Kiwix 服务地址，默认 http://127.0.0.1:8090
     KIWIX_PORT      本代理监听端口，默认 8080
     KIWIX_HOST      监听地址，默认 127.0.0.1（仅本机）；手机要访问时设为 0.0.0.0
     KIWIX_DEBUG=1   开启访问日志（写入本脚本同目录 proxy_access.log）
+    KIWIX_ZIM_ID    缺库名自动补全时使用的库名，默认 wikipedia_zh_all_maxi_2026-08
 
 前置：Kiwix 服务 (kiwix-serve) 已在本机运行（见 README）。
 """
@@ -27,6 +29,8 @@ import sys
 import re
 import os
 import time
+import subprocess
+import html
 
 UPSTREAM = os.environ.get("KIWIX_UPSTREAM", "http://127.0.0.1:8090")
 PORT = int(os.environ.get("KIWIX_PORT", "8080"))
@@ -106,6 +110,112 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(_NoRedirect)
 
 
+# ---- /lan 访问入口页：自动列出本机所有局域网地址 + 二维码（纯本地，零 Python 依赖）----
+_LAN_QRCODE_JS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qrcode.min.js")
+
+def _lan_ips():
+    """解析 ipconfig 输出，返回 [(适配器名, IPv4), ...]，
+    排除回环地址与常见虚拟网卡（WSL/Docker/VMware 等手机连不上的）。"""
+    _SKIP_ADAPTOR = ("wsl", "vehternet", "docker", "vmware", "virtualbox",
+                     "loopback", "vgate", "unknown", "hyper-v")
+    out = None
+    for enc in ("gbk", "utf-8", "cp936"):
+        try:
+            out = subprocess.check_output(["ipconfig"], encoding=enc, errors="replace")
+            break
+        except Exception:
+            continue
+    if out is None:
+        return []
+    ips, adaptor = [], ""
+    for raw in out.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        # 段落标题（行首无缩进）作为适配器名；属性行（含 IPv4）行首有缩进
+        if raw[:1] in (" ", "\t", "\u3000"):
+            if "IPv4" in line:
+                m = re.search(r"(\d{1,3}(?:\.\d{1,3}){3})", line)
+                if m and not m.group(1).startswith("127."):
+                    ad = adaptor or "网络"
+                    if any(k in ad.lower() for k in _SKIP_ADAPTOR):
+                        continue
+                    ips.append((ad, m.group(1)))
+        else:
+            adaptor = line
+    return ips
+
+
+_LAN_PAGE_HTML = """<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>离线维基百科 · 访问入口</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f4f6f8; color: #1f2328; padding: 32px 16px 48px; }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 8px; color: #0f172a; }
+  .sub { color: #64748b; font-size: 14px; line-height: 1.7; margin-bottom: 24px; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(15,23,42,.05); }
+  .tag { display: inline-block; background: #eef2ff; color: #3730a3; font-size: 12px; padding: 3px 10px; border-radius: 20px; margin-bottom: 10px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .url { display: block; font-size: 18px; font-weight: 600; color: #2563eb; text-decoration: none; word-break: break-all; margin: 6px 0 14px; }
+  .qr { width: 200px; height: 200px; margin: 0 auto 14px; }
+  .copy { display: block; width: 100%; padding: 10px; border: 0; border-radius: 10px; background: #0f172a; color: #fff; font-size: 15px; cursor: pointer; }
+  .copy:active { opacity: .8; }
+  .tips { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; font-size: 14px; line-height: 1.9; color: #334155; }
+  .tips h3 { font-size: 15px; margin-bottom: 8px; color: #0f172a; }
+  .tips code { background: #f1f5f9; padding: 1px 6px; border-radius: 6px; }
+  .warn { color: #b91c1c; margin-top: 10px; font-size: 13px; }
+  .empty { color: #94a3b8; text-align: center; padding: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>离线维基百科 · 访问入口</h1>
+  <p class="sub">手机 / 平板 / 电脑打开下面任一地址即可查 154 万条词条（全简体，无需外网）。<br>扫二维码直接打开，或点「复制地址」。</p>
+  {CARDS}
+  <div class="tips">
+    <h3>三种使用方式</h3>
+    <p><b>① 家里有 WiFi</b>：手机连 WiFi，扫「WiFi」那张卡的二维码。</p>
+    <p><b>② 没网 / 在外面</b>：手机开热点（不耗流量）→ 电脑连上手机热点 → 扫「热点」那张卡的二维码。</p>
+    <p><b>③ 电脑本机</b>：直接打开 <code>http://127.0.0.1:{PORT}</code>。</p>
+    <p class="warn">仅限家庭内网使用，不要把端口映射到公网。</p>
+  </div>
+</div>
+<script>{QRCODE_JS}</script>
+<script>
+(function(){
+  document.querySelectorAll('.card').forEach(function(card){
+    var url = card.getAttribute('data-url');
+    if (typeof QRCode !== 'undefined') {
+      new QRCode(card.querySelector('.qr'), {text: url, width: 200, height: 200});
+    }
+    var btn = card.querySelector('.copy');
+    btn.addEventListener('click', function(){
+      var done = function(){ btn.textContent = '已复制'; setTimeout(function(){ btn.textContent = '复制地址'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done, done);
+      } else {
+        var t = document.createElement('textarea'); t.value = url; document.body.appendChild(t);
+        t.select(); try { document.execCommand('copy'); } catch(e){} document.body.removeChild(t); done();
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>"""
+
+_LAN_CARD_HTML = """<div class="card" data-url="{url}">
+  <span class="tag">{adaptor}</span>
+  <a class="url" href="{url}">{url}</a>
+  <div class="qr"></div>
+  <button class="copy">复制地址</button>
+</div>"""
+
+
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -123,10 +233,41 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         self.close_connection = True
         self._handle(write_body=False)
 
+    def _serve_lan_page(self):
+        cards = []
+        for adaptor, ip in _lan_ips():
+            url = "http://%s:%d" % (ip, PORT)
+            cards.append(_LAN_CARD_HTML.format(adaptor=html.escape(adaptor), ip=ip, url=url))
+        if not cards:
+            cards.append('<div class="empty">未检测到局域网地址，本机请直接用 <code>http://127.0.0.1:%d</code></div>' % PORT)
+        qrcode_js = ""
+        if os.path.exists(_LAN_QRCODE_JS_FILE):
+            try:
+                with open(_LAN_QRCODE_JS_FILE, "r", encoding="utf-8") as f:
+                    qrcode_js = f.read()
+            except Exception:
+                qrcode_js = ""
+        page = (_LAN_PAGE_HTML
+                .replace("{CARDS}", "\n".join(cards))
+                .replace("{QRCODE_JS}", qrcode_js)
+                .replace("{PORT}", str(PORT)))
+        body = page.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _handle(self, write_body=True):
         raw_path = self.path            # 原始路径（含 query）
         path = raw_path.split("?")[0]   # 纯路径，用于判断
         query = raw_path[len(path):]    # 保留 ?query
+
+        # /lan 访问入口页：列出所有可用地址 + 二维码，不转发上游
+        if path == "/lan":
+            self._serve_lan_page()
+            return
 
         # 容错：/content/<词条> 缺 ZIM 库名时，自动补全为 /content/<ZIM_ID>/<词条>
         # 注意：第一段已是库名（如 /content/wikipedia_zh_all_maxi_2026-08）时不补全，原样转发；
