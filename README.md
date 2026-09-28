@@ -213,6 +213,7 @@ HTTPServer(('0.0.0.0', 8080), Proxy).serve_forever()
 |---|---|---|
 | `KIWIX_UPSTREAM` | `http://127.0.0.1:8090` | 上游 Kiwix 服务地址 |
 | `KIWIX_PORT` | `8080` | 本代理监听端口 |
+| `KIWIX_HOST` | `127.0.0.1` | 监听地址；**手机要访问时设为 `0.0.0.0`**（启动会提示仅限内网） |
 | `KIWIX_DEBUG=1` | 关 | 开启访问日志（写在脚本同目录 `proxy_access.log`） |
 | `KIWIX_DIR` / `ZIM_FILE` | （start.ps1 内定义） | 一键启动时指定 Kiwix 目录与 ZIM 文件 |
 
@@ -223,8 +224,12 @@ kiwix-zhs-proxy/
 ├── kiwix_zhs_proxy.py   # 代理主脚本（单文件，仅依赖 opencc）
 ├── start.ps1            # 一键启动（kiwix-serve + 代理 + 打开浏览器）
 ├── stop.ps1             # 停止
+├── requirements.txt     # Python 依赖（pip install -r requirements.txt）
+├── Dockerfile           # 容器化运行代理（可选）
+├── docker-compose.yml   # 一键全家桶：kiwix-serve + 代理（可选）
 ├── docs/
 │   └── ai-assisted-deployment.md  # AI 托管部署实录（选型/踩坑/修复全过程）
+├── SECURITY.md          # 安全边界与使用说明（仅限内网）
 ├── LICENSE              # MIT
 └── README.md
 ```
