@@ -36,6 +36,9 @@ _LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "proxy_acce
 
 # 内容页路径前缀（Kiwix serve 的 ZIM 内容都挂在 /content/ 下）
 CONTENT_PREFIX = "/content/"
+# 默认 ZIM 库名：手机端某些入口会生成缺库名的 /content/<词条> 链接，
+# 代理自动补全库名再转发，避免 404。
+ZIM_ID = os.environ.get("KIWIX_ZIM_ID", "wikipedia_zh_all_maxi_2026-08")
 
 # ---- OpenCC 转换器（服务端，原生 C++ 绑定，大页面约几十毫秒）----
 _converter = None
@@ -94,6 +97,15 @@ def convert_html_text(html_text, converter):
     return converted
 
 
+# 禁止 urllib 自动跟随重定向：把 302 原样转发给浏览器，由浏览器自行跳转，
+# 保证地址栏/iframe URL 正确（/content/<库名>/<词条>），避免代理层跟随后内容错位。
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -112,10 +124,24 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         self._handle(write_body=False)
 
     def _handle(self, write_body=True):
-        path = self.path.split("?")[0]
+        raw_path = self.path            # 原始路径（含 query）
+        path = raw_path.split("?")[0]   # 纯路径，用于判断
+        query = raw_path[len(path):]    # 保留 ?query
+
+        # 容错：/content/<词条> 缺 ZIM 库名时，自动补全为 /content/<ZIM_ID>/<词条>
+        # 注意：第一段已是库名（如 /content/wikipedia_zh_all_maxi_2026-08）时不补全，原样转发；
+        #       带尾斜杠的库名路径（/content/<库名>/）视为同一库名，去掉尾斜杠。
+        if path.startswith(CONTENT_PREFIX):
+            rest = path[len(CONTENT_PREFIX):]
+            if rest.endswith("/"):
+                rest = rest.rstrip("/")
+                path = CONTENT_PREFIX + rest
+            if rest and "/" not in rest and rest != ZIM_ID:
+                path = CONTENT_PREFIX + ZIM_ID + "/" + rest
+            raw_path = path + query
 
         # 转发到 Kiwix 内容服务
-        url = UPSTREAM + self.path
+        url = UPSTREAM + raw_path
         headers = {
             "User-Agent": self.headers.get("User-Agent", "Mozilla/5.0"),
             "Accept": self.headers.get("Accept", "*/*"),
@@ -125,17 +151,41 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         }
         try:
             req = urllib.request.Request(url, headers=headers)
-            resp = urllib.request.urlopen(req, timeout=60)
+            resp = _OPENER.open(req, timeout=60)
+            status = resp.status
+
+            # 重定向（302 等）原样转发给浏览器，由浏览器自行跟随：
+            # 1) 浏览器地址栏/iframe 的 URL 保持正确（/content/<库名>/<词条>），
+            # 2) 避免代理层跟随后 URL 与内容错位导致的 404/加载异常。
+            if status in (301, 302, 303, 307, 308):
+                loc = resp.headers.get("Location", "")
+                if DEBUG:
+                    try:
+                        with open(_LOG_FILE, "a", encoding="utf-8") as _lf:
+                            _lf.write("[%s] %s -> %d REDIRECT-> %s\n"
+                                      % (time.strftime("%H:%M:%S"), self.path, status, loc))
+                    except Exception:
+                        pass
+                self.send_response(status)
+                self.send_header("Location", loc)
+                self.send_header("Content-Length", "0")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                try:
+                    resp.close()
+                except Exception:
+                    pass
+                return
+
             body = resp.read()
             ctype = resp.headers.get("Content-Type", "")
-            status = resp.status
             converted = False
 
             # 只对 HTML 内容页做服务端简繁转换
             if (path.startswith(CONTENT_PREFIX)
                     and "html" in ctype.lower()
                     and body):
-                cache_key = self.path
+                cache_key = path
                 cached = cache_get(cache_key)
                 if cached is not None:
                     body = cached
@@ -157,8 +207,10 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             if DEBUG:
                 try:
                     with open(_LOG_FILE, "a", encoding="utf-8") as _lf:
-                        _lf.write("[%s] %s -> %d len=%d\n"
-                                  % (time.strftime("%H:%M:%S"), self.path, status, len(body)))
+                        _lf.write("[%s] %s -> %d len=%d UA=%s AL=%s\n"
+                                  % (time.strftime("%H:%M:%S"), self.path, status, len(body),
+                                     self.headers.get("User-Agent", "")[:60],
+                                     self.headers.get("Accept-Language", "")))
                 except Exception:
                     pass
             # 转发除长度/编码/连接外的头。
@@ -185,6 +237,23 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             if write_body:
                 self.wfile.write(body)
         except urllib.error.HTTPError as e:
+            # 上游重定向（302 等）在 NoRedirect 下以 HTTPError 形式抛出：
+            # 同样原样转发 Location 给浏览器，由浏览器自行跳转。
+            if e.code in (301, 302, 303, 307, 308):
+                loc = e.headers.get("Location", "")
+                if DEBUG:
+                    try:
+                        with open(_LOG_FILE, "a", encoding="utf-8") as _lf:
+                            _lf.write("[%s] %s -> %d REDIRECT-> %s\n"
+                                      % (time.strftime("%H:%M:%S"), self.path, e.code, loc))
+                    except Exception:
+                        pass
+                self.send_response(e.code)
+                self.send_header("Location", loc)
+                self.send_header("Content-Length", "0")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                return
             self.send_response(e.code)
             self.end_headers()
             if write_body:
