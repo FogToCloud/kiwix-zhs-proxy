@@ -2,7 +2,7 @@
 # kiwix-zhs-proxy 一键启动
 # 1) 确保 kiwix-serve 在 8090
 # 2) 确保简体代理在 8080
-# 3) 打开浏览器
+# 3) 打开「访问入口页」（/lan）：列出本机所有可用地址 + 二维码，手机扫码即开
 
 # ==================== 按你的环境修改（或设环境变量覆盖，AI/脚本更友好） ====================
 # 优先级：环境变量 KIWIX_DIR / ZIM_FILE / KIWIX_PYTHON > 下方默认值
@@ -49,13 +49,13 @@ if (Test-Port 8080) {
 }
 
 # ---------- 3. 打开浏览器 ----------
-Write-Host "[3/3] opening simplified Wikipedia ..." -ForegroundColor Cyan
-Start-Process "http://127.0.0.1:8080/viewer#wikipedia_zh_all_maxi_2026-08/User%3AThe_other_Kiwix_guy/Landing"
+Write-Host "[3/3] opening access page ..." -ForegroundColor Cyan
+# 打开「访问入口页」（/lan）：自动列出本机所有可用地址 + 二维码，手机扫码即开。
+# 任何网络环境（家里 WiFi / 手机热点 / 无外网）都适用：手机连哪个网络，就扫那张卡的码。
+Start-Process "http://127.0.0.1:8080/lan"
 Write-Host ""
-Write-Host "Launched. Browser should show simplified Wikipedia."
-$myIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } | Select-Object -First 1).IPAddress
-if ($myIp) {
-    Write-Host "Phone (same Wi-Fi): http://$myIp`:8080/viewer#wikipedia_zh_all_maxi_2026-08/User%3AThe_other_Kiwix_guy/Landing"
-}
+Write-Host "Launched. Browser should show the access page (IP list + QR codes)."
+Write-Host "Phone (same Wi-Fi or phone hotspot): scan the QR code on the page,"
+Write-Host "or open http://<PC-IP>:8080 (find the IP on the page)."
 Write-Host "To stop: run stop.ps1"
 Read-Host "Press Enter to close"
