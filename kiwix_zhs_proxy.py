@@ -15,6 +15,7 @@ Kiwix 官方中文维基 ZIM 包是繁体，本代理在【服务端】把内容
 环境变量（可选）：
     KIWIX_UPSTREAM  上游 Kiwix 服务地址，默认 http://127.0.0.1:8090
     KIWIX_PORT      本代理监听端口，默认 8080
+    KIWIX_HOST      监听地址，默认 127.0.0.1（仅本机）；手机要访问时设为 0.0.0.0
     KIWIX_DEBUG=1   开启访问日志（写入本脚本同目录 proxy_access.log）
 
 前置：Kiwix 服务 (kiwix-serve) 已在本机运行（见 README）。
@@ -29,6 +30,7 @@ import time
 
 UPSTREAM = os.environ.get("KIWIX_UPSTREAM", "http://127.0.0.1:8090")
 PORT = int(os.environ.get("KIWIX_PORT", "8080"))
+HOST = os.environ.get("KIWIX_HOST", "127.0.0.1")
 DEBUG = os.environ.get("KIWIX_DEBUG", "") == "1"
 _LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "proxy_access.log")
 
@@ -102,12 +104,14 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         # 强制关闭连接：避免 keep-alive 连接上大响应体（>1MB）传输不完整，
         # 浏览器按 Content-Length 等待剩余字节导致 iframe 一直加载。
         self.close_connection = True
-        self._handle()
-        return
+        self._handle(write_body=True)
 
-    do_HEAD = do_GET
+    def do_HEAD(self):
+        # HEAD 只回响应头（含 Content-Length），不写 body。
+        self.close_connection = True
+        self._handle(write_body=False)
 
-    def _handle(self):
+    def _handle(self, write_body=True):
         path = self.path.split("?")[0]
 
         # 转发到 Kiwix 内容服务
@@ -116,6 +120,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             "User-Agent": self.headers.get("User-Agent", "Mozilla/5.0"),
             "Accept": self.headers.get("Accept", "*/*"),
             "Accept-Language": self.headers.get("Accept-Language", "zh-CN,zh;q=0.9"),
+            # 让上游直接回原始字节，避免代理层解压缩带来的复杂性与内容长度不确定
+            "Accept-Encoding": "identity",
         }
         try:
             req = urllib.request.Request(url, headers=headers)
@@ -123,6 +129,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             body = resp.read()
             ctype = resp.headers.get("Content-Type", "")
             status = resp.status
+            converted = False
 
             # 只对 HTML 内容页做服务端简繁转换
             if (path.startswith(CONTENT_PREFIX)
@@ -132,13 +139,18 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 cached = cache_get(cache_key)
                 if cached is not None:
                     body = cached
+                    converted = True
                 else:
                     conv = get_converter()
-                    if conv:
-                        text = body.decode("utf-8", errors="replace")
-                        text = convert_html_text(text, conv)
-                        body = text.encode("utf-8")
-                        cache_put(cache_key, body)
+                    if conv is None:
+                        # 转换器不可用时不静默返回繁体：fail fast，明确报错
+                        self.send_error(500, "简体转换不可用：OpenCC 未安装或加载失败")
+                        return
+                    text = body.decode("utf-8", errors="replace")
+                    text = convert_html_text(text, conv)
+                    body = text.encode("utf-8")
+                    converted = True
+                    cache_put(cache_key, body)
 
             self.send_response(status)
             # 可选访问日志（KIWIX_DEBUG=1 时开启）
@@ -153,7 +165,11 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             # 注意：CSP 头必须原样转发（Kiwix 内容页的 sandbox 指令依赖它，
             # 丢弃后 iframe 内脚本行为异常，导致内容页加载后不渲染）。
             skip = ("content-length", "transfer-encoding", "connection",
-                    "content-encoding", "keep-alive", "etag", "date")
+                    "content-encoding", "keep-alive", "date")
+            # 转换过的 body 不再匹配上游 ETag：丢弃 ETag 避免浏览器复用错误的缓存；
+            # 未转换的静态资源（图片/CSS/JS）原样转发 ETag/Cache-Control，保持浏览器缓存生效。
+            if converted:
+                skip = skip + ("etag",)
             sent = set()
             for k, v in resp.headers.items():
                 if k.lower() in skip:
@@ -163,16 +179,16 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                     continue  # 去重（上游可能重复发 Content-Type/Date 等）
                 sent.add(lk)
                 self.send_header(k, v)
-            # 转换过的 body 不再匹配上游 ETag：统一不转发 ETag（已在上方 skip），
-            # 让代理响应不带缓存验证字段，避免浏览器复用错误的缓存。
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Connection", "close")
             self.end_headers()
-            self.wfile.write(body)
+            if write_body:
+                self.wfile.write(body)
         except urllib.error.HTTPError as e:
             self.send_response(e.code)
             self.end_headers()
-            self.wfile.write(e.read())
+            if write_body:
+                self.wfile.write(e.read())
         except Exception as e:
             self.send_error(502, "Upstream error: %s" % e)
 
@@ -183,11 +199,14 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 if __name__ == "__main__":
+    if HOST == "0.0.0.0":
+        print("\n[警告] 正在绑定 0.0.0.0：同一 WiFi 下的手机/平板可通过 http://<本机IP>:%d 访问。" % PORT, file=sys.stderr)
+        print("        仅限家庭内网使用，不要把端口映射到公网！\n", file=sys.stderr)
     try:
-        httpd = ThreadingHTTPServer(("0.0.0.0", PORT), ProxyHandler)
+        httpd = ThreadingHTTPServer((HOST, PORT), ProxyHandler)
     except OSError as e:
         print("端口 %d 被占用：%s" % (PORT, e), file=sys.stderr)
         sys.exit(1)
-    print("Kiwix 简体代理（服务端转换版）运行中： http://127.0.0.1:%d/viewer  ->  %s" % (PORT, UPSTREAM))
+    print("Kiwix 简体代理（服务端转换版）运行中： http://%s:%d/viewer  ->  %s" % (HOST, PORT, UPSTREAM))
     sys.stderr.flush()
     httpd.serve_forever()
