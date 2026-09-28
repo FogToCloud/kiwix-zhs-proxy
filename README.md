@@ -41,7 +41,7 @@ Kiwix 官方中文维基 ZIM 离线包是**繁体**，本项目在**服务端**�
 
 > 我要把中文维基百科离线装进家里，全程由你（AI 助手）帮我自动完成，我不懂代码：
 > 1. 帮我找到 Kiwix 官方 Windows 版下载地址，和官方中文维基离线包 `wikipedia_zh_all_maxi`（约 25GB，实测 24.77GB，文件名为 `wikipedia_zh_all_maxi_*.zim`）的下载地址，告诉我怎么下载。
-> 2. 下载完成后，从 GitHub 仓库 `FogToCloud/kiwix-zhs-proxy` 获取 `kiwix_zhs_proxy.py` 和 `start.ps1`，放进 Kiwix 目录，并自动把脚本里的路径改成我机器上的实际路径。
+> 2. 下载完成后，从 GitHub 仓库 `FogToCloud/kiwix-zhs-proxy` 获取 `kiwix_zhs_proxy.py`、`start.ps1` 和 `qrcode.min.js`，放进 Kiwix 目录，并自动把脚本里的路径改成我机器上的实际路径。
 > 3. 帮我启动 Kiwix 服务和简体转换代理，然后打开浏览器验证能看到简体维基首页。
 > 4. 告诉我手机怎么连家里 WiFi 访问（不用装任何 App），以及以后每次怎么一键启动。
 >
@@ -101,6 +101,7 @@ C:\Kiwix\
 ├── zim\
 │   └── wikipedia_zh_all_maxi_2026-08.zim   ← 中文离线包
 ├── kiwix_zhs_proxy.py   ← 本代理程序（从本仓库下载）
+├── qrcode.min.js        ← 二维码库（/lan 入口页用，从本仓库下载）
 └── start.ps1            ← 一键启动脚本（从本仓库下载）
 ```
 
@@ -110,7 +111,7 @@ C:\Kiwix\
 
 1. 启动 Kiwix 服务（端口 8090，读取 ZIM 包）
 2. 启动简体代理（端口 8080，繁转简）
-3. 自动打开浏览器
+3. 自动打开浏览器，进入「访问入口页」
 
 **看到这个 = 成功：**
 
@@ -130,21 +131,20 @@ http://127.0.0.1:8080
 
 **看到简体维基首页 = 成功**（就是上面效果图 1 那个页面）。
 
-#### 第 4 步：手机上打开
+#### 第 4 步：手机上打开（傻瓜方式：看「访问入口页」）
 
-手机连**同一个 WiFi**，浏览器输入：
+启动脚本会自动打开**「访问入口页」**（`http://127.0.0.1:8080/lan`），页面上：
 
-```
-http://你的电脑IP:8080
-```
+- 列出电脑当前**所有可用地址**（WiFi / 热点各自的 IP，自动过滤虚拟网卡）
+- 每个地址配一个**二维码**——手机扫码直接打开，不用手输 IP
 
-电脑 IP 怎么看？`Win+R` 输入 `cmd` 回车，敲 `ipconfig`，找"IPv4 地址"，比如 `192.168.1.11`，那手机就打开：
+手机连哪个网络，就扫哪张卡：
 
-```
-http://192.168.1.11:8080
-```
+- **家里有 WiFi**：手机连 WiFi，扫「WiFi」那张卡的码。
+- **没网 / 在外面**：手机开热点（不耗流量）→ 电脑连上手机热点 → 扫「热点」那张卡的码。
+- **电脑本机**：直接打开 `http://127.0.0.1:8080`。
 
-**看到和电脑一样的简体维基 = 成功。** 手机、电脑、平板，全家设备都能看，无外部网络也能查。
+没有二维码库也不影响：地址文字照样列出，点「复制地址」即可。**任何网络、任何设备都能看，哪怕没有外网。**
 
 > 手机端正常入口：打开 `http://<电脑IP>:8080` 后会先看到库列表（1 book(s)），点"维基百科"卡片即进入首页；想直达某词条，可用 `http://<电脑IP>:8080/viewer#wikipedia_zh_all_maxi_2026-08/<词条>`。缺库名的旧链接（`/content/<词条>`）代理会自动补全库名，不再 404。
 
@@ -162,7 +162,7 @@ Start-Process $KiwixPath -ArgumentList "--port=8090 `"$ZimFile`""
 Start-Process "python" -ArgumentList "`"$ProxyScript`""
 
 Start-Sleep 3
-Start-Process "http://127.0.0.1:8080"
+Start-Process "http://127.0.0.1:8080/lan"
 ```
 
 `kiwix_zhs_proxy.py`（核心转换逻辑，单文件，完整版在仓库根目录）：
@@ -199,7 +199,7 @@ class Proxy(SimpleHTTPRequestHandler):
 HTTPServer(('0.0.0.0', 8080), Proxy).serve_forever()
 ```
 
-（上面是精简示意，完整逻辑含繁简转换的占位保护、缺库名自动补全、302 重定向原样转发等，直接去仓库复制 `kiwix_zhs_proxy.py`。）
+（上面是精简示意，完整逻辑含繁简转换的占位保护、缺库名自动补全、302 重定向原样转发、/lan 访问入口页等，直接去仓库复制 `kiwix_zhs_proxy.py`。）
 
 ### 我踩过的三个坑（卡了我一晚上）
 
@@ -219,6 +219,7 @@ HTTPServer(('0.0.0.0', 8080), Proxy).serve_forever()
 ```
 浏览器 ──> 本代理 (8080) ──> Kiwix 服务 (8090) ──> ZIM 离线包
               │
+              ├─ /lan 访问入口页：列出本机所有可用地址 + 二维码
               └─ 仅对 /content/... 的 HTML 页面：
                  OpenCC(tw2sp) 转换文本节点 → 返回简体
                  静态资源（图片/CSS/JS）原样转发
@@ -227,6 +228,7 @@ HTTPServer(('0.0.0.0', 8080), Proxy).serve_forever()
 - 转换只针对**文本节点**（`>文字<`），自动跳过 `<script>/<style>/<pre>/<code>/<textarea>/<title>` 等，不破坏脚本和样式。
 - 内置 LRU 缓存（80 条），同一页面短时间重复访问不重复转换。
 - Kiwix 对"只有库名"路径返回 302 → 代理原样转发给浏览器，浏览器自动跳到首页完整路径，手机上点击卡片/词条全程正常。
+- `/lan` 入口页由代理动态生成：解析 `ipconfig` 自动列出本机所有可用 IPv4（自动过滤 WSL/Docker/VMware 等虚拟网卡），二维码由本地 `qrcode.min.js` 在浏览器端生成，全程离线零依赖。
 
 ### 为什么不在打包阶段直接生成简体 ZIM？
 
@@ -253,8 +255,9 @@ HTTPServer(('0.0.0.0', 8080), Proxy).serve_forever()
 ```
 kiwix-zhs-proxy/
 ├── kiwix_zhs_proxy.py   # 代理主脚本（单文件，仅依赖 opencc）
-├── start.ps1            # 一键启动（kiwix-serve + 代理 + 打开浏览器）
+├── start.ps1            # 一键启动（kiwix-serve + 代理 + 打开 /lan 访问入口页）
 ├── stop.ps1             # 停止
+├── qrcode.min.js        # 二维码库（/lan 入口页用，MIT，可选——缺省时页面只显示地址文字）
 ├── requirements.txt     # Python 依赖（pip install -r requirements.txt）
 ├── Dockerfile           # 容器化运行代理（可选）
 ├── docker-compose.yml   # 一键全家桶：kiwix-serve + 代理（可选）
@@ -291,18 +294,21 @@ Article body — "People's Republic of China" — fully Simplified Chinese:
 
 ### Step-by-step (no coding required)
 
-1. Download **Kiwix Windows tools** and the **Chinese ZIM** (`wikipedia_zh_all_maxi_2026-08.zim`, ~25 GB, measured 24.77 GB) from kiwix.org. Download this repo's `kiwix_zhs_proxy.py` and `start.ps1`.
+1. Download **Kiwix Windows tools** and the **Chinese ZIM** (`wikipedia_zh_all_maxi_2026-08.zim`, ~25 GB, measured 24.77 GB) from kiwix.org. Download this repo's `kiwix_zhs_proxy.py`, `start.ps1` and `qrcode.min.js`.
 2. Put them in one folder:
    ```
    C:\Kiwix\
    ├── kiwix-serve.exe
    ├── zim\wikipedia_zh_all_maxi_2026-08.zim
    ├── kiwix_zhs_proxy.py
+   ├── qrcode.min.js
    └── start.ps1
    ```
-3. Right-click `start.ps1` → Run with PowerShell. It starts Kiwix (8090), the proxy (8080), and opens the browser.
+3. Right-click `start.ps1` → Run with PowerShell. It starts Kiwix (8090), the proxy (8080), and opens the **access page** (`/lan`) in the browser.
 4. Desktop: open `http://127.0.0.1:8080`.
 5. Phone on the same Wi-Fi: open `http://<your-PC-IP>:8080` (find the IP with `ipconfig`). No app needed.
+
+**Access page (easiest for phones)**: after launch, the browser opens `http://127.0.0.1:8080/lan`. It lists every usable address of this PC (Wi-Fi / hotspot, virtual adapters auto-filtered) with a QR code each — scan with your phone and you're in. Works on any network: home Wi-Fi, a phone hotspot (no data used), even with no internet at all.
 
 Phone entry: open `http://<PC-IP>:8080` → you'll see the library list (1 book(s)) → tap the "维基百科" card to enter the home page. Direct link to an article: `http://<PC-IP>:8080/viewer#wikipedia_zh_all_maxi_2026-08/<article>`. Legacy links missing the ZIM name (`/content/<article>`) are auto-completed by the proxy, so no more 404.
 
@@ -311,6 +317,7 @@ Phone entry: open `http://<PC-IP>:8080` → you'll see the library list (1 book(
 ```
 Browser ──> this proxy (8080) ──> Kiwix serve (8090) ──> ZIM offline file
               │
+              ├─ /lan access page: lists all usable LAN addresses + QR codes
               └─ only for /content/... HTML pages:
                  OpenCC(tw2sp) converts text nodes → simplified
                  static assets (images/CSS/JS) pass through unchanged
@@ -319,6 +326,8 @@ Browser ──> this proxy (8080) ──> Kiwix serve (8090) ──> ZIM offline
 Text nodes (`>text<`) are converted while `<script>/<style>/<pre>/<code>/<textarea>/<title>` blocks are skipped. A small LRU cache (80 entries) avoids repeated conversion.
 
 Kiwix answers a bare "library-name-only" path (`/content/<zim>`) with a **302 redirect** to the home page (`User:The other Kiwix guy/Landing`). The proxy passes that 302 through to the browser verbatim (instead of following it internally), so the browser lands on the full path — URL and content stay in sync, and tapping cards/articles on a phone works reliably.
+
+The `/lan` page is generated by the proxy itself: it parses `ipconfig`, lists every usable IPv4 (WSL/Docker/VMware virtual adapters auto-filtered), and renders QR codes in the browser with the bundled local `qrcode.min.js` — fully offline, zero Python dependencies.
 
 ### Why not convert at packaging time?
 
@@ -344,6 +353,7 @@ For **home LAN use only** (PC & phone on the same Wi-Fi). Do not expose port 808
 | Python 3 | `pip install opencc-python-reimplemented` |
 | Kiwix tools | `kiwix-serve.exe` (download from kiwix.org) |
 | ZIM file | `wikipedia_zh_all_maxi_2026-08.zim` (~25 GB, measured 24.77 GB) |
+| qrcode.min.js | bundled in this repo (MIT) — optional; without it the /lan page shows addresses without QR codes |
 
 | Var | Default | Purpose |
 |---|---|---|
